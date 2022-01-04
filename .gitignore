@@ -1,0 +1,5 @@
+.git/*
+.vs/*
+packages/*
+TaskTrayShortcuts/bin/*
+TaskTrayShortcuts/obj/*
