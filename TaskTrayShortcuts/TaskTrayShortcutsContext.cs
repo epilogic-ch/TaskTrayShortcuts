@@ -35,7 +35,7 @@ namespace TaskTrayShortcuts
             #endif
 
 
-            List<ToolStripMenuItem> items = this.ProcessDirectory(this.folderPath);
+            List<ToolStripMenuItem> items = this.ProcessDirectory(this.folderPath, true);
             System.Drawing.Icon test = IconExtractor.Extract("shell32.dll", 131, true);
             items.Add(new ToolStripMenuItem("Exit", test.ToBitmap(), new EventHandler(Exit)));
 
@@ -51,19 +51,34 @@ namespace TaskTrayShortcuts
 
         // Process all files in the directory passed in, recurse on any directories
         // that are found, and process the files they contain.
-        public List<ToolStripMenuItem> ProcessDirectory(string targetDirectory)
+        public List<ToolStripMenuItem> ProcessDirectory(string targetDirectory, bool addOpenFolderLink)
         {
             List<ToolStripMenuItem> menu = new List<ToolStripMenuItem>();
+            ToolStripMenuItem item;
+            FileInfo fInfo;
+
+            System.Drawing.Bitmap folderImage = IconExtractor.Extract("shell32.dll", 3, true).ToBitmap();
 
             try
             {
+                if (addOpenFolderLink)
+                {
+                    fInfo = new FileInfo(targetDirectory);
+                    item = new ToolStripMenuItem("Open folder \"" + fInfo.Name + "\"", null, delegate (object sender, EventArgs e)
+                    {
+                        this.ExecuteCommand(sender, e, targetDirectory);
+                    });
+                    item.Image = IconExtractor.Extract("shell32.dll", 3, true).ToBitmap();
+                    menu.Add(item);
+                }
+
                 // Recurse into subdirectories of this directory.
                 string[] subdirectoryEntries = Directory.GetDirectories(targetDirectory);
                 foreach (string subdirectory in subdirectoryEntries)
                 {
-                    var fInfo = new FileInfo(subdirectory);
-                    var item = new ToolStripMenuItem(fInfo.Name, null, ProcessDirectory(subdirectory).ToArray());
-                    item.Image = DefaultIcons.FolderLarge.ToBitmap();
+                    fInfo = new FileInfo(subdirectory);
+                    item = new ToolStripMenuItem(fInfo.Name, null, ProcessDirectory(subdirectory, true).ToArray());
+                    item.Image = folderImage;
                     menu.Add(item);
                 }
 
@@ -73,36 +88,21 @@ namespace TaskTrayShortcuts
                 {
                     if (!fileName.ToLower().StartsWith("$"))
                     {
-                        var fInfo = new FileInfo(fileName);
+                        fInfo = new FileInfo(fileName);
                         if (!fInfo.Attributes.HasFlag(FileAttributes.Hidden))
                         {
                             // Extract shortcut name and icon
                             string name = fInfo.Name.Substring(0, fInfo.Name.LastIndexOf(fInfo.Extension));
 
-                            ToolStripMenuItem item = new ToolStripMenuItem(name, null, delegate (object sender, EventArgs e) {
+                            item = new ToolStripMenuItem(name, null, delegate (object sender, EventArgs e) {
                                 this.ExecuteCommand(sender, e, fileName);
                             });
 
                             try
                             {
                                 string target = GetShortcutTargetFile(fileName);
-                                System.Drawing.Icon icon = System.Drawing.Icon.ExtractAssociatedIcon(target);
-                                if (icon != null)
-                                {
-                                    var destinationImage = new System.Drawing.Bitmap(16, 16);
-                                    System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(icon.ToBitmap());
-                                    System.Drawing.Rectangle destinationRect = new System.Drawing.Rectangle(0, 0, 16, 16);
-                                    using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(destinationImage))
-                                    {
-                                        //graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
-                                        //graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
-                                        graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-                                        graphics.DrawImage(bitmap, destinationRect, 0, 0, bitmap.Width, bitmap.Height, System.Drawing.GraphicsUnit.Pixel);
+                                item.Image = GetShortcutTargetIcon(fileName, target);
 
-                                    }
-
-                                    item.Image = destinationImage;
-                                }
                             }
                             catch (System.IO.FileNotFoundException) { }
 
@@ -110,7 +110,7 @@ namespace TaskTrayShortcuts
                         }
                     }
                 }
-            } catch (System.IO.DirectoryNotFoundException) { }
+            } catch (DirectoryNotFoundException) { }
 
             return menu;
         }
@@ -119,21 +119,49 @@ namespace TaskTrayShortcuts
         {
             try
             {
-                string pathOnly = System.IO.Path.GetDirectoryName(shortcutFilename);
-                string filenameOnly = System.IO.Path.GetFileName(shortcutFilename);
+                string pathOnly = Path.GetDirectoryName(shortcutFilename);
+                string filenameOnly = Path.GetFileName(shortcutFilename);
 
                 Shell shell = new Shell();
                 Folder folder = shell.NameSpace(pathOnly);
                 FolderItem folderItem = folder.ParseName(filenameOnly);
                 if (folderItem != null)
                 {
-                    Shell32.ShellLinkObject link = (Shell32.ShellLinkObject)folderItem.GetLink;
+                    ShellLinkObject link = (ShellLinkObject)folderItem.GetLink;
                     return (link.Path == string.Empty ? shortcutFilename : link.Path);
                 }
             }
             catch (System.NotImplementedException) { }
             
             return shortcutFilename;
+        }
+
+        public static System.Drawing.Bitmap GetShortcutTargetIcon(string shortcutFilename, string target)
+        {
+            System.Drawing.Icon icon = IconReader.GetFileIcon(target, IconReader.IconSize.Small, false);
+            if (icon != null) return icon.ToBitmap();
+
+            icon = IconReader.GetFileIcon(shortcutFilename, IconReader.IconSize.Small, false);
+            if (icon != null) return icon.ToBitmap();
+
+            icon = System.Drawing.Icon.ExtractAssociatedIcon(target);
+            if (icon != null)
+            {
+                System.Drawing.Bitmap destinationImage = new System.Drawing.Bitmap(16, 16);
+                System.Drawing.Bitmap bitmap = new System.Drawing.Bitmap(icon.ToBitmap());
+                System.Drawing.Rectangle destinationRect = new System.Drawing.Rectangle(0, 0, 16, 16);
+                using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(destinationImage))
+                {
+                    //graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+                    //graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighQuality;
+                    graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    graphics.DrawImage(bitmap, destinationRect, 0, 0, bitmap.Width, bitmap.Height, System.Drawing.GraphicsUnit.Pixel);
+                }
+
+                return destinationImage;
+            }
+
+            return System.Drawing.Icon.ExtractAssociatedIcon(shortcutFilename).ToBitmap();
         }
 
         void ExecuteCommand(object sender, EventArgs e, string fileName)
