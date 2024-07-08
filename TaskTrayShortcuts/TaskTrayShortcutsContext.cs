@@ -77,9 +77,12 @@ namespace TaskTrayShortcuts
                 foreach (string subdirectory in subdirectoryEntries)
                 {
                     fInfo = new FileInfo(subdirectory);
-                    item = new ToolStripMenuItem(fInfo.Name, null, ProcessDirectory(subdirectory, true).ToArray());
-                    item.Image = folderImage;
-                    menu.Add(item);
+                    if (!fInfo.Attributes.HasFlag(FileAttributes.Hidden))
+                    {
+                        item = new ToolStripMenuItem(fInfo.Name, null, ProcessDirectory(subdirectory, true).ToArray());
+                        item.Image = folderImage;
+                        menu.Add(item);
+                    }
                 }
 
                 // Process the list of files found in the directory.
@@ -138,7 +141,9 @@ namespace TaskTrayShortcuts
 
         public static System.Drawing.Bitmap GetShortcutTargetIcon(string shortcutFilename, string target)
         {
-            System.Drawing.Icon icon = IconReader.GetFileIcon(target, IconReader.IconSize.Small, false);
+            System.Drawing.Icon icon;
+            
+            icon = IconReader.GetFileIcon(target, IconReader.IconSize.Small, false);
             if (icon != null) return icon.ToBitmap();
 
             icon = IconReader.GetFileIcon(shortcutFilename, IconReader.IconSize.Small, false);
