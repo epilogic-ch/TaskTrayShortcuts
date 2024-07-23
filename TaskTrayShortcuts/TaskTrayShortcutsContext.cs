@@ -27,8 +27,10 @@ namespace TaskTrayShortcuts
             #else
                 // We expect a folder path as first argument
                 if (args.Length == 0)
-                {
-                    MessageBox.Show("Missing parameter.");
+                {                    
+                    MessageBox.Show("Missing parameter. Please add a path as parameter.\n\n"+
+                        "Syntax: TaskTrayShortcuts.exe <path>\n"+
+                        "where <path> is the path containing shortcuts");
                     System.Environment.Exit(1);
                 }
 
