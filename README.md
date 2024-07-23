@@ -9,6 +9,8 @@ the taskbar. This feature seems to have disappeared in Windows 11.
 
 The application aims to reproduce this feature.
 
+![Sample image](sample.png "Title")
+
 Syntax
 ------
 `TaskTrayShortcuts.exe path_to_folder`
