@@ -5,11 +5,17 @@ using System.Collections.Generic;
 using System.Windows.Forms;
 using System.ComponentModel;
 using Shell32;
+using System.Text;
+using System.Runtime.InteropServices;
+using System.Drawing;
 
 namespace TaskTrayShortcuts
 {
     public class TaskTrayShortcutsContext : ApplicationContext
     {
+        [DllImport("Shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
+        public static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
+
         string folderPath = null;
         NotifyIcon notifyIcon = new NotifyIcon();
         Configuration configWindow = new Configuration();
@@ -103,9 +109,7 @@ namespace TaskTrayShortcuts
 
                             try
                             {
-                                string target = GetShortcutTargetFile(fileName);
-                                item.Image = GetShortcutTargetIcon(fileName, target);
-
+                                item.Image = GetShortcutTargetIcon(fileName);
                             }
                             catch (System.IO.FileNotFoundException) { }
 
@@ -118,38 +122,67 @@ namespace TaskTrayShortcuts
             return menu;
         }
 
-        public static string GetShortcutTargetFile(string shortcutFilename)
+        public static System.Drawing.Bitmap GetShortcutTargetIcon(string shortcutFilename)
         {
+            System.Drawing.Icon icon;
+
+            string pathOnly = Path.GetDirectoryName(shortcutFilename);
+            string filenameOnly = Path.GetFileName(shortcutFilename);
+            string target = shortcutFilename;
+
             try
             {
-                string pathOnly = Path.GetDirectoryName(shortcutFilename);
-                string filenameOnly = Path.GetFileName(shortcutFilename);
-
                 Shell shell = new Shell();
                 Folder folder = shell.NameSpace(pathOnly);
                 FolderItem folderItem = folder.ParseName(filenameOnly);
                 if (folderItem != null)
                 {
-                    ShellLinkObject link = (ShellLinkObject)folderItem.GetLink;
-                    return (link.Path == string.Empty ? shortcutFilename : link.Path);
+                    string tmp;
+                    ShellLinkObject link = (ShellLinkObject) folderItem.GetLink;
+
+                    // Get target
+                    if (link != null && link.Path != string.Empty)
+                    {
+                        target = link.Path;
+                    }
+
+                    // Get icon
+                    int val = link.GetIconLocation(out tmp);
+
+                    IntPtr largeIconPtr = IntPtr.Zero;
+                    IntPtr smallIconPtr = IntPtr.Zero;
+                    ExtractIconEx(tmp, val, out largeIconPtr, out smallIconPtr, 1);
+                    if (smallIconPtr != IntPtr.Zero)
+                    {
+                        icon = Icon.FromHandle(smallIconPtr);
+                        if (icon != null && icon.Width == 16 && icon.Height == 16)
+                        {
+                            return icon.ToBitmap();
+                        }
+                    }
                 }
             }
             catch (System.NotImplementedException) { }
-            
-            return shortcutFilename;
-        }
+            catch (System.ArgumentException) { }
 
-        public static System.Drawing.Bitmap GetShortcutTargetIcon(string shortcutFilename, string target)
-        {
-            System.Drawing.Icon icon;
-            
+            // Alternate method for getting icon
             icon = IconReader.GetFileIcon(target, IconReader.IconSize.Small, false);
-            if (icon != null) return icon.ToBitmap();
+            Console.WriteLine(target + "\t" + icon.ToString());
+            if (icon != null && icon.Width == 16 && icon.Height == 16) return icon.ToBitmap();
 
             icon = IconReader.GetFileIcon(shortcutFilename, IconReader.IconSize.Small, false);
-            if (icon != null) return icon.ToBitmap();
+            Console.WriteLine(shortcutFilename + "\t" + icon.ToString());
+            if (icon != null && icon.Width == 16 && icon.Height == 16) return icon.ToBitmap();
 
             icon = System.Drawing.Icon.ExtractAssociatedIcon(target);
+            Console.WriteLine(target + "\t" + icon.ToString());
+            if (icon != null && icon.Width == 16 && icon.Height == 16) return resizeIcon(icon);
+
+            return resizeIcon(System.Drawing.Icon.ExtractAssociatedIcon(shortcutFilename));
+        }
+
+        public static System.Drawing.Bitmap resizeIcon(System.Drawing.Icon icon)
+        {
             if (icon != null)
             {
                 System.Drawing.Bitmap destinationImage = new System.Drawing.Bitmap(16, 16);
@@ -165,8 +198,7 @@ namespace TaskTrayShortcuts
 
                 return destinationImage;
             }
-
-            return System.Drawing.Icon.ExtractAssociatedIcon(shortcutFilename).ToBitmap();
+            return null;
         }
 
         void ExecuteCommand(object sender, EventArgs e, string fileName)
@@ -176,7 +208,8 @@ namespace TaskTrayShortcuts
                 Process proc = new Process();
                 proc.StartInfo.FileName = fileName;
                 proc.Start();
-            } catch (Win32Exception)
+            }
+            catch (Win32Exception)
             {
                 MessageBox.Show("Unable to start \"" + fileName + "\" process");
             }
