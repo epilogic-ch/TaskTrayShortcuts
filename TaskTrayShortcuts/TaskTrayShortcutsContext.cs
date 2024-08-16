@@ -16,6 +16,10 @@ namespace TaskTrayShortcuts
         [DllImport("Shell32.dll", EntryPoint = "ExtractIconExW", CharSet = CharSet.Unicode, ExactSpelling = true, CallingConvention = CallingConvention.StdCall)]
         public static extern int ExtractIconEx(string sFile, int iIndex, out IntPtr piLargeVersion, out IntPtr piSmallVersion, int amountIcons);
 
+        [DllImport("user32.dll", CharSet = CharSet.Auto, ExactSpelling = true)]
+        public static extern bool SetForegroundWindow(HandleRef hWnd);
+
+
         string folderPath = null;
         NotifyIcon notifyIcon = new NotifyIcon();
         Configuration configWindow = new Configuration();
@@ -44,8 +48,8 @@ namespace TaskTrayShortcuts
 
 
             List<ToolStripMenuItem> items = this.ProcessDirectory(this.folderPath, true);
-            System.Drawing.Icon test = IconExtractor.Extract("shell32.dll", 131, true);
-            items.Add(new ToolStripMenuItem("Exit", test.ToBitmap(), new EventHandler(Exit)));
+            System.Drawing.Icon exitIcon = IconExtractor.Extract("shell32.dll", 131, true);
+            items.Add(new ToolStripMenuItem("Exit", exitIcon.ToBitmap(), new EventHandler(Exit)));
 
             ContextMenuStrip menu = new ContextMenuStrip();
             menu.Items.AddRange(items.ToArray());
@@ -178,12 +182,12 @@ namespace TaskTrayShortcuts
 
             icon = System.Drawing.Icon.ExtractAssociatedIcon(target);
             Console.WriteLine(target + "\t" + icon.ToString());
-            if (icon != null && icon.Width == 16 && icon.Height == 16) return resizeIcon(icon);
+            if (icon != null && icon.Width == 16 && icon.Height == 16) return ResizeIcon(icon);
 
-            return resizeIcon(System.Drawing.Icon.ExtractAssociatedIcon(shortcutFilename));
+            return ResizeIcon(System.Drawing.Icon.ExtractAssociatedIcon(shortcutFilename));
         }
 
-        public static System.Drawing.Bitmap resizeIcon(System.Drawing.Icon icon)
+        public static System.Drawing.Bitmap ResizeIcon(System.Drawing.Icon icon)
         {
             if (icon != null)
             {
@@ -233,8 +237,19 @@ namespace TaskTrayShortcuts
                     pos.Y -= notifyIcon.ContextMenuStrip.Height;
                     if (pos.X < 0) pos.X = 0;
                     if (pos.Y < 0) pos.Y = 0;
+
+                    // voir https://stackoverflow.com/a/11242454/1585114
+                    SetForegroundWindow(new HandleRef(notifyIcon.ContextMenuStrip, notifyIcon.ContextMenuStrip.Handle));
                     notifyIcon.ContextMenuStrip.Show(pos);
                 }
+            }
+        }
+
+        void Close(object sender, EventArgs e)
+        {
+            if (notifyIcon.ContextMenuStrip.Visible)
+            {
+                notifyIcon.ContextMenuStrip.Hide();
             }
         }
 
