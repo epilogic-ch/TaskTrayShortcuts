@@ -8,6 +8,7 @@ using Shell32;
 using System.Text;
 using System.Runtime.InteropServices;
 using System.Drawing;
+using IWshRuntimeLibrary;
 
 namespace TaskTrayShortcuts
 {
@@ -117,7 +118,7 @@ namespace TaskTrayShortcuts
                             {
                                 item.Image = GetShortcutTargetIcon(fileName);
                             }
-                            catch (System.IO.FileNotFoundException) { }
+                            catch (Exception) {}
 
                             menu.Add(item);
                         }
@@ -131,45 +132,38 @@ namespace TaskTrayShortcuts
         public static System.Drawing.Bitmap GetShortcutTargetIcon(string shortcutFilename)
         {
             System.Drawing.Icon icon;
-
-            string pathOnly = Path.GetDirectoryName(shortcutFilename);
-            string filenameOnly = Path.GetFileName(shortcutFilename);
             string target = shortcutFilename;
 
+            // tentative 1
             try
             {
-                Shell shell = new Shell();
-                Folder folder = shell.NameSpace(pathOnly);
-                FolderItem folderItem = folder.ParseName(filenameOnly);
-                if (folderItem != null)
+                icon = GetBitmap(shortcutFilename);
+                if (icon != null)
                 {
-                    string tmp;
-                    ShellLinkObject link = (ShellLinkObject) folderItem.GetLink;
-
-                    // Get target
-                    if (link != null && link.Path != string.Empty)
-                    {
-                        target = link.Path;
-                    }
-
-                    // Get icon
-                    int val = link.GetIconLocation(out tmp);
-
-                    IntPtr largeIconPtr = IntPtr.Zero;
-                    IntPtr smallIconPtr = IntPtr.Zero;
-                    ExtractIconEx(tmp, val, out largeIconPtr, out smallIconPtr, 1);
-                    if (smallIconPtr != IntPtr.Zero)
-                    {
-                        icon = Icon.FromHandle(smallIconPtr);
-                        if (icon != null && icon.Width == 16 && icon.Height == 16)
-                        {
-                            return icon.ToBitmap();
-                        }
-                    }
+                    return icon.ToBitmap();
                 }
             }
-            catch (System.NotImplementedException) { }
-            catch (System.ArgumentException) { }
+            catch (Exception) { }
+
+            // tentative 2
+            try
+            {
+                WshShell wshell = new WshShell(); //Create a new WshShell Interface
+                IWshShortcut wlink = (IWshShortcut) wshell.CreateShortcut(shortcutFilename); //Link the interface to our shortcut
+
+                target = wlink.TargetPath;
+
+                try
+                {
+                    icon = GetBitmap(target);
+                    if (icon != null)
+                    {
+                        return icon.ToBitmap();
+                    }
+                }
+                catch (Exception) { }
+            }
+            catch (Exception) { }
 
             // Alternate method for getting icon
             icon = IconReader.GetFileIcon(target, IconReader.IconSize.Small, false);
@@ -185,6 +179,45 @@ namespace TaskTrayShortcuts
             if (icon != null && icon.Width == 16 && icon.Height == 16) return ResizeIcon(icon);
 
             return ResizeIcon(System.Drawing.Icon.ExtractAssociatedIcon(shortcutFilename));
+        }
+
+        private static System.Drawing.Icon GetBitmap(string target)
+        {
+            string pathOnly = Path.GetDirectoryName(target);
+            string filenameOnly = Path.GetFileName(target);
+
+            Shell shell = new Shell();
+            var folder = shell.NameSpace(pathOnly);
+            var folderItem = folder.ParseName(filenameOnly);
+            if (folderItem != null)
+            {
+                // @fixme Pour certains path, le GetLink nécessite les droits admin
+                ShellLinkObject link = (ShellLinkObject)folderItem.GetLink;
+
+                // Get target
+                if (link != null && link.Path != string.Empty)
+                {
+                    target = link.Path;
+                }
+
+                // Get icon
+                string tmp;
+                int val = link.GetIconLocation(out tmp);
+
+                IntPtr largeIconPtr = IntPtr.Zero;
+                IntPtr smallIconPtr = IntPtr.Zero;
+                ExtractIconEx(tmp, val, out largeIconPtr, out smallIconPtr, 1);
+                if (smallIconPtr != IntPtr.Zero)
+                {
+                    System.Drawing.Icon icon = Icon.FromHandle(smallIconPtr);
+                    if (icon != null && icon.Width == 16 && icon.Height == 16)
+                    {
+                        return icon;
+                    }
+                }
+            }
+
+            return null;
         }
 
         public static System.Drawing.Bitmap ResizeIcon(System.Drawing.Icon icon)
