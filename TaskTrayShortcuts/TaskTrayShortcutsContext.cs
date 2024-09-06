@@ -20,15 +20,15 @@ namespace TaskTrayShortcuts
         [DllImport("user32.dll", CharSet = CharSet.Auto, ExactSpelling = true)]
         public static extern bool SetForegroundWindow(HandleRef hWnd);
 
-
         string folderPath = null;
+        string folderHash = null;
         NotifyIcon notifyIcon = new NotifyIcon();
         Configuration configWindow = new Configuration();
 
         public TaskTrayShortcutsContext(string[] args)
         {
             #if DEBUG
-                this.folderPath = @"D:\_";
+                this.folderPath = @"C:\_";
             #else
                 // We expect a folder path as first argument
                 if (args.Length == 0)
@@ -47,19 +47,72 @@ namespace TaskTrayShortcuts
                 }
             #endif
 
-
-            List<ToolStripMenuItem> items = this.ProcessDirectory(this.folderPath, true);
-            System.Drawing.Icon exitIcon = IconExtractor.Extract("shell32.dll", 131, true);
-            items.Add(new ToolStripMenuItem("Exit", exitIcon.ToBitmap(), new EventHandler(Exit)));
-
-            ContextMenuStrip menu = new ContextMenuStrip();
-            menu.Items.AddRange(items.ToArray());
+            BuildContextMenu(true);
 
             notifyIcon.Icon = TaskTrayShortcuts.Properties.Resources.AppIcon;
             notifyIcon.DoubleClick += new EventHandler(Open);
             notifyIcon.Click += new EventHandler(Open);
-            notifyIcon.ContextMenuStrip = menu;
             notifyIcon.Visible = true;
+        }
+
+        /**
+         * Construit le menu contextuel
+         * @param force Flag indiquant de forcer la création. Dans le cas où le paramètre est
+         *              false, la méthode commence par déterminer si une reconstruction est
+         *              nécessaire.
+         */
+        public void BuildContextMenu(Boolean force)
+        {
+            if (!force)
+            {
+                String tmp = CalculateHash(this.folderPath);
+                force = (this.folderHash == null || !tmp.Equals(this.folderHash));
+                this.folderHash = tmp;
+            }
+
+            if (force)
+            {
+                List<ToolStripMenuItem> items = this.ProcessDirectory(this.folderPath, true);
+                System.Drawing.Icon exitIcon = IconExtractor.Extract("shell32.dll", 131, true);
+                items.Add(new ToolStripMenuItem("Exit", exitIcon.ToBitmap(), new EventHandler(Exit)));
+
+                ContextMenuStrip menu = new ContextMenuStrip();
+                menu.Items.AddRange(items.ToArray());
+
+                notifyIcon.ContextMenuStrip = menu;
+            }
+        }
+
+        public String CalculateHash(string targetDirectory)
+        {
+            String tmp = "";
+            FileInfo fInfo;
+
+            string[] subdirectoryEntries = Directory.GetDirectories(targetDirectory);
+            foreach (string subdirectory in subdirectoryEntries)
+            {
+                fInfo = new FileInfo(subdirectory);
+                if (!fInfo.Attributes.HasFlag(FileAttributes.Hidden))
+                {
+                    tmp += CalculateHash(subdirectory);
+                }
+
+                string[] fileEntries = Directory.GetFiles(targetDirectory);
+                foreach (string fileName in fileEntries)
+                {
+                    if (!fileName.ToLower().StartsWith("$"))
+                    {
+                        fInfo = new FileInfo(fileName);
+                        if (!fInfo.Attributes.HasFlag(FileAttributes.Hidden))
+                        {
+                            // Extract shortcut name and icon
+                            tmp += fInfo.FullName + "@" + fInfo.Length + "\n";
+                        }
+                    }
+                }
+            }
+
+            return tmp;
         }
 
         // Process all files in the directory passed in, recurse on any directories
@@ -265,6 +318,8 @@ namespace TaskTrayShortcuts
                 }
                 else
                 {
+                    BuildContextMenu(false);
+
                     System.Drawing.Point pos = Cursor.Position;
                     pos.X -= notifyIcon.ContextMenuStrip.Width;
                     pos.Y -= notifyIcon.ContextMenuStrip.Height;
