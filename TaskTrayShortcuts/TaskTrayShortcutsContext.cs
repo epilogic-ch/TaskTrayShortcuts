@@ -24,6 +24,7 @@ namespace TaskTrayShortcuts
         string folderHash = null;
         NotifyIcon notifyIcon = new NotifyIcon();
         Configuration configWindow = new Configuration();
+        Boolean shiftKey = false;
 
         public TaskTrayShortcutsContext(string[] args)
         {
@@ -47,7 +48,7 @@ namespace TaskTrayShortcuts
                 }
             #endif
 
-            BuildContextMenu(true);
+            BuildContextMenu();
 
             notifyIcon.Icon = TaskTrayShortcuts.Properties.Resources.AppIcon;
             notifyIcon.DoubleClick += new EventHandler(Open);
@@ -57,20 +58,12 @@ namespace TaskTrayShortcuts
 
         /**
          * Construit le menu contextuel
-         * @param force Flag indiquant de forcer la création. Dans le cas où le paramètre est
-         *              false, la méthode commence par déterminer si une reconstruction est
-         *              nécessaire.
          */
-        public void BuildContextMenu(Boolean force)
+        public void BuildContextMenu()
         {
-            if (!force)
-            {
-                String tmp = CalculateHash(this.folderPath);
-                force = (this.folderHash == null || !tmp.Equals(this.folderHash));
-                this.folderHash = tmp;
-            }
+            String tmp = CalculateHash(this.folderPath);
 
-            if (force)
+            if (this.folderHash == null || !tmp.Equals(this.folderHash))
             {
                 List<ToolStripMenuItem> items = this.ProcessDirectory(this.folderPath, true);
                 System.Drawing.Icon exitIcon = IconExtractor.Extract("shell32.dll", 131, true);
@@ -79,8 +72,23 @@ namespace TaskTrayShortcuts
                 ContextMenuStrip menu = new ContextMenuStrip();
                 menu.Items.AddRange(items.ToArray());
 
+                menu.KeyDown += Menu_KeyDown;
+                menu.KeyUp += Menu_KeyUp;
+
                 notifyIcon.ContextMenuStrip = menu;
             }
+
+            this.folderHash = tmp;
+        }
+
+        private void Menu_KeyDown(object sender, KeyEventArgs e)
+        {
+            this.shiftKey = e.Shift;
+        }
+
+        private void Menu_KeyUp(object sender, KeyEventArgs e)
+        {
+            this.shiftKey = e.Shift;
         }
 
         public String CalculateHash(string targetDirectory)
@@ -299,12 +307,21 @@ namespace TaskTrayShortcuts
             {
                 Process proc = new Process();
                 proc.StartInfo.FileName = fileName;
+
+                // when Shift key is pressed, process is run as admin
+                if (this.shiftKey && System.Environment.OSVersion.Version.Major >= 6)
+                {
+                    proc.StartInfo.Verb = "runas";
+                }
+
                 proc.Start();
             }
             catch (Win32Exception)
             {
                 MessageBox.Show("Unable to start \"" + fileName + "\" process");
             }
+
+            this.shiftKey = false;
         }
 
         void Open(object sender, EventArgs e)
@@ -318,9 +335,10 @@ namespace TaskTrayShortcuts
                 }
                 else
                 {
-                    BuildContextMenu(false);
-
                     System.Drawing.Point pos = Cursor.Position;
+
+                    BuildContextMenu();
+
                     pos.X -= notifyIcon.ContextMenuStrip.Width;
                     pos.Y -= notifyIcon.ContextMenuStrip.Height;
                     if (pos.X < 0) pos.X = 0;
@@ -339,6 +357,7 @@ namespace TaskTrayShortcuts
             {
                 notifyIcon.ContextMenuStrip.Hide();
             }
+            this.shiftKey = false;
         }
 
         void Exit(object sender, EventArgs e)
